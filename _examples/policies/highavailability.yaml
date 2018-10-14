@@ -1,0 +1,10 @@
+apiVersion: barbossa.sphc.io/v1alpha1
+kind: HighAvailabilityPolicy
+metadata:
+  name: default
+  namespace: default
+spec:
+  selector:
+    matchLabels: {}
+  replicas:
+    minimum: 2

@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook
+  namespace: barbossa
+
+---
+
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: highavailabilitypolicies.barbossa.sphc.io
+spec:
+  group: barbossa.sphc.io
+  version: v1alpha1
+  scope: Namespaced
+  names:
+    plural: highavailabilitypolicies
+    kind: HighAvailabilityPolicy
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook
+  namespace: barbossa
+spec:
+  type: ClusterIP
+  ports:
+  - name: https
+    port: 443
+    targetPort: 6443
+  selector:
+    app: webhook
+
+---
+
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: webhook
+  namespace: barbossa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webhook
+      release: webhook
+  template:
+    metadata:
+      labels:
+        app: webhook
+        release: webhook
+      annotations:
+    spec:
+      serviceAccountName: webhook
+      containers:
+        - name: webhook
+          image: jelmersnoeck/barbossa
+          imagePullPolicy: IfNotPresent
+          args:
+          - webhook
+          - --tls-cert-file=/certs/cert.pem
+          - --tls-key-file=/certs/key.pem
+          env:
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          volumeMounts:
+          - name: certs
+            mountPath: /certs
+      volumes:
+      - name: certs
+        secret:
+          secretName: webhook-tls
+
+---
+
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: barbossa-webhook
+webhooks:
+  - name: deployments.admission.barbossa.sphc.io
+    clientConfig:
+      caBundle: ${CA_BUNDLE}
+      service:
+        name: webhook
+        namespace: barbossa
+        path: /validate
+    rules:
+      - operations:
+          - "CREATE"
+          - "UPDATE"
+        apiGroups:
+          - "apps"
+          - "extensions"
+        apiVersions:
+          - "v1beta1"
+        resources:
+          - "deployments"
+    failurePolicy: Fail
+    namespaceSelector:
+      matchExpressions:
+      - key: "barbossa.sphc.io/disable-validation"
+        operator: "NotIn"
+        values:
+        - "true"
+      - key: "name"
+        operator: "NotIn"
+        values:
+        - barbossa
