@@ -110,6 +110,17 @@ func TestDeploymentValidation(t *testing.T) {
 				field.Invalid(field.NewPath("spec").Child("strategy").Child("rollingUpdate").Child("maxSurge"), "95%", "should be at most 75%"),
 			},
 		},
+		"with different update strategy type": {
+			dpl: v1beta1.DeploymentSpec{
+				Replicas: ptrInt32(3),
+				Strategy: v1beta1.DeploymentStrategy{
+					Type: v1beta1.RecreateDeploymentStrategyType,
+				},
+			},
+			errs: []*field.Error{
+				field.Invalid(field.NewPath("spec").Child("strategy").Child("type"), v1beta1.RecreateDeploymentStrategyType, "should be 'RollingUpdate'"),
+			},
+		},
 	}
 
 	for n, tc := range tcs {

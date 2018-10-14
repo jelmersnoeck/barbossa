@@ -49,7 +49,7 @@ func validateUpdateStrategy(el field.ErrorList, dpl v1beta1.Deployment, hap v1al
 	hapStrategy := hap.Spec.Strategy
 
 	if dplStrategy.Type != hapStrategy.Type {
-		return append(el, field.Invalid(path.Child("type"), dplStrategy.Type, fmt.Sprintf("should be %s", hapStrategy.Type)))
+		return append(el, field.Invalid(path.Child("type"), dplStrategy.Type, fmt.Sprintf("should be '%s'", hapStrategy.Type)))
 	}
 
 	if dplStrategy.Type == v1beta1.RollingUpdateDeploymentStrategyType {
