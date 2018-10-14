@@ -55,7 +55,7 @@ func TestDeploymentValidation(t *testing.T) {
 				},
 			},
 			errs: []*field.Error{
-				field.Invalid(field.NewPath("spec").Child("replicas"), nil, fmt.Sprintf("should be at least %d", hap.Spec.Replicas.Minimum)),
+				field.Invalid(field.NewPath("spec").Child("replicas"), ptrInt32(1), fmt.Sprintf("should be at least %d", hap.Spec.Replicas.Minimum)),
 			},
 		},
 		"with no replica count set": {
