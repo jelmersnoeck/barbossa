@@ -18,3 +18,7 @@ spec:
       minSurge: 25%
       maxSurge: 100%
       maxUnavailable: 0
+  resources:
+    requests:
+      cpu: true
+      memory: true

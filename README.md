@@ -23,4 +23,4 @@ kubectl apply -f docs/kube
 
 To achieve High Availability within a Kubernetes cluster, we've configured some
 defaults to enforce setting up some values. You can view these configurations in
-the [defaults](./_examples/defaults) folder.
+the [defaults](./docs/kube/defaults) folder.
