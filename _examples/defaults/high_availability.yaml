@@ -1,0 +1,20 @@
+# This is a default HighAvailabilityPolicy which ensures applications run in a
+# High Availability fashion where:
+# - there are 2 replicas
+# - during a deploy we roll out new replicas before destroying old ones
+apiVersion: barbossa.sphc.io/v1alpha1
+kind: HighAvailabilityPolicy
+metadata:
+  name: default
+  namespace: default
+spec:
+  selector:
+    matchLabels: {}
+  replicas:
+    minimum: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      minSurge: 25%
+      maxSurge: 100%
+      maxUnavailable: 0

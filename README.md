@@ -18,3 +18,9 @@ Once that's done, you can install the webhook as follows:
 ```
 kubectl apply -f docs/kube
 ```
+
+## Defaults
+
+To achieve High Availability within a Kubernetes cluster, we've configured some
+defaults to enforce setting up some values. You can view these configurations in
+the [defaults](./_examples/defaults) folder.
