@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/jelmersnoeck/barbossa/internal/webhook/cmd"
-	"github.com/spf13/viper"
+	"github.com/jelmersnoeck/barbossa/internal/webhooks"
+
+	"github.com/openshift/generic-admission-server/pkg/cmd"
 )
 
 func main() {
-	viper.SetEnvPrefix("barbossa")
-
-	cmd.Execute()
+	cmd.RunAdmissionServer(
+		&webhooks.HighAvailabilityAdmissionHook{},
+	)
 }

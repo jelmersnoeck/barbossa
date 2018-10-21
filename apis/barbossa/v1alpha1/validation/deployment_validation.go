@@ -82,7 +82,6 @@ func validateUpdateStrategy(el field.ErrorList, dpl v1beta1.Deployment, hap v1al
 
 		if dplVal < hapMinVal {
 			val := &hapStrategy.RollingUpdate.MinSurge
-			fmt.Println(val.String())
 			return append(el, field.Invalid(upPath.Child("maxSurge"), dplStrategy.RollingUpdate.MaxSurge.String(), fmt.Sprintf("should be at least %s", val.String())))
 		}
 

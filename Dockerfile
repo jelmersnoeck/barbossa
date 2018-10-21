@@ -11,7 +11,7 @@ RUN make vendor
 RUN make $BINARY
 RUN cp $BINARY /operator
 
-FROM manifoldco/scratch-certificates
+FROM golang:1.11-alpine
 USER 7171:8787
 
 COPY --from=0 /operator /operator

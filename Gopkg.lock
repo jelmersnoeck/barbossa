@@ -924,7 +924,6 @@
   input-imports = [
     "github.com/golang/glog",
     "github.com/openshift/generic-admission-server/pkg/cmd",
-    "k8s.io/api/admission/v1beta1",
     "k8s.io/api/extensions/v1beta1",
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/apimachinery/registered",

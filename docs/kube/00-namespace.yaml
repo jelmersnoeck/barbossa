@@ -3,5 +3,4 @@ kind: Namespace
 metadata:
   name: barbossa
   labels:
-    name: barbossa
     barbossa.sphc.io/disable-validation: "true"

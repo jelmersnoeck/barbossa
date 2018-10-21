@@ -5,7 +5,6 @@ metadata:
   namespace: barbossa
 
 ---
-
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -19,7 +18,50 @@ spec:
     kind: HighAvailabilityPolicy
 
 ---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: barbossa:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- apiGroup: ""
+  kind: ServiceAccount
+  name: webhook
+  namespace: barbossa
 
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: barbossa:webhook-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- apiGroup: ""
+  kind: ServiceAccount
+  name: webhook
+  namespace: barbossa
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: barbossa:webhook-requester
+rules:
+- apiGroups:
+  - admission.barbossa.sphc.io
+  resources:
+  - highavailabilitypolicies
+  verbs:
+  - create
+
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -33,9 +75,9 @@ spec:
     targetPort: 6443
   selector:
     app: webhook
+    release: webhook
 
 ---
-
 apiVersion: apps/v1beta1
 kind: Deployment
 metadata:
@@ -57,12 +99,14 @@ spec:
       serviceAccountName: webhook
       containers:
         - name: webhook
-          image: jelmersnoeck/barbossa
+          image: "jelmersnoeck/barbossa:latest"
           imagePullPolicy: IfNotPresent
           args:
-          - webhook
-          - --tls-cert-file=/certs/cert.pem
-          - --tls-key-file=/certs/key.pem
+          - --v=12
+          - --secure-port=6443
+          - --tls-cert-file=/certs/tls.crt
+          - --tls-private-key-file=/certs/tls.key
+          - --disable-admission-plugins=NamespaceLifecycle,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,Initializers
           env:
           - name: POD_NAMESPACE
             valueFrom:
@@ -72,9 +116,6 @@ spec:
             requests:
               cpu: 10m
               memory: 32Mi
-            limits:
-              cpu: 50m
-              memory: 64Mi
           volumeMounts:
           - name: certs
             mountPath: /certs
@@ -84,38 +125,240 @@ spec:
           secretName: webhook-tls
 
 ---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: webhook-ca-sync
+  namespace: barbossa
+spec:
+  schedule: "* * */24 * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ca-helper
+        spec:
+          serviceAccountName: webhook-ca-sync
+          restartPolicy: OnFailure
+          containers:
+          - name: ca-helper
+            image: quay.io/munnerz/apiextensions-ca-helper:v0.1.0
+            imagePullPolicy: IfNotPresent
+            args:
+            - -config=/config/config
+            volumeMounts:
+            - name: config
+              mountPath: /config
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+          volumes:
+          - name: config
+            configMap:
+              name: webhook-ca-sync
 
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: webhook-ca-sync
+  namespace: barbossa
+spec:
+  template:
+    metadata:
+      labels:
+        app: ca-helper
+    spec:
+      serviceAccountName: webhook-ca-sync
+      restartPolicy: OnFailure
+      containers:
+      - name: ca-helper
+        image: quay.io/munnerz/apiextensions-ca-helper:v0.1.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - -config=/config/config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      volumes:
+      - name: config
+        configMap:
+          name: webhook-ca-sync
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhook-ca-sync
+  namespace: barbossa
+data:
+  config: |-
+    {
+        "apiServices": [
+            {
+                "name": "v1alpha1.admission.barbossa.sphc.io",
+                "secret": {
+                    "name": "webhook-ca",
+                    "namespace": "barbossa",
+                    "key": "tls.crt"
+                }
+            }
+        ],
+        "validatingWebhookConfigurations": [
+            {
+                "name": "barbossa-webhook",
+                "file": {
+                    "path": "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+                }
+            }
+        ]
+    }
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook-ca-sync
+  namespace: barbossa
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: webhook-ca-sync
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames:
+    - webhook-ca
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+    verbs: ["get", "update"]
+    resourceNames:
+    - barbossa-webhook
+  - apiGroups: ["apiregistration.k8s.io"]
+    resources: ["apiservices"]
+    verbs: ["get", "update"]
+    resourceNames:
+    - v1alpha1.admission.barbossa.sphc.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: webhook-ca-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: webhook-ca-sync
+subjects:
+  - name: webhook-ca-sync
+    namespace: barbossa
+    kind: ServiceAccount
+
+---
+apiVersion: apiregistration.k8s.io/v1beta1
+kind: APIService
+metadata:
+  name: v1alpha1.admission.barbossa.sphc.io
+spec:
+  group: admission.barbossa.sphc.io
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: webhook
+    namespace: barbossa
+  version: v1alpha1
+
+---
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Issuer
+metadata:
+  name: webhook-selfsign
+  namespace: barbossa
+spec:
+  selfsigned: {}
+
+---
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Certificate
+metadata:
+  name: webhook-ca
+  namespace: barbossa
+spec:
+  secretName: webhook-ca
+  issuerRef:
+    name: webhook-selfsign
+  commonName: "ca.webhook.barbossa"
+  isCA: true
+
+---
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Issuer
+metadata:
+  name: webhook-ca
+  namespace: barbossa
+spec:
+  ca:
+    secretName: webhook-ca
+
+---
+apiVersion: certmanager.k8s.io/v1alpha1
+kind: Certificate
+metadata:
+  name: webhook-tls
+  namespace: barbossa
+spec:
+  secretName: webhook-tls
+  issuerRef:
+    name: webhook-ca
+  dnsNames:
+  - webhook
+  - webhook.barbossa
+  - webhook.barbossa.svc
+
+---
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: barbossa-webhook
 webhooks:
-  - name: deployments.admission.barbossa.sphc.io
-    clientConfig:
-      caBundle: ${CA_BUNDLE}
-      service:
-        name: webhook
-        namespace: barbossa
-        path: /validate
-    rules:
-      - operations:
-          - "CREATE"
-          - "UPDATE"
-        apiGroups:
-          - "apps"
-          - "extensions"
-        apiVersions:
-          - "v1beta1"
-        resources:
-          - "deployments"
-    failurePolicy: Fail
+  - name: highavailabilitypolicies.admission.barbossa.sphc.io
     namespaceSelector:
       matchExpressions:
       - key: "barbossa.sphc.io/disable-validation"
         operator: "NotIn"
         values:
         - "true"
-      - key: "name"
-        operator: "NotIn"
-        values:
-        - barbossa
+    rules:
+      - apiGroups:
+          - "extensions"
+          - "apps"
+          - ""
+        apiVersions:
+          - v1beta1
+        resources:
+          - deployments
+        operations:
+          - CREATE
+          - UPDATE
+    failurePolicy: Fail
+    clientConfig:
+      caBundle: ""
+      service:
+        name: kubernetes
+        namespace: default
+        path: /apis/admission.barbossa.sphc.io/v1alpha1/highavailabilitypolicies
