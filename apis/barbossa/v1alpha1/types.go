@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -25,7 +26,24 @@ type HighAvailabilityPolicySpec struct {
 	// The Strategy allows us to configure specific boundaries in which the
 	// Strategy for the selected Deployments should fall.
 	Strategy *HighAvailabilityPolicyStrategy `json:"strategy,omitempty"`
+
+	// ResourceRequirements allow us to specify the types of resources should be
+	// configured for a Deployment and it's containers.
+	Resources *HighAvailabilityPolicyResourceRequirements `json:"resources,omitempty"`
 }
+
+// HighAvailabilityPolicyResourceRequirements is a validation rule that ensures
+// that certain values are set.
+// This will not validate they have minimum or maximum values, this should be
+// configured through a LimitRange (https://kubernetes.io/docs/tasks/administer-cluster/manage-resources/memory-default-namespace/)
+type HighAvailabilityPolicyResourceRequirements struct {
+	Requests ResourceList `json:"requests"`
+	Limits   ResourceList `json:"limits"`
+}
+
+// ResourceList represents a map of possible container resources and if they
+// should be configured or not.
+type ResourceList map[v1.ResourceName]bool
 
 // HighAvailabilityPolicyReplicas is the configuration to validate the Replica
 // count of a Deployment configuration.
