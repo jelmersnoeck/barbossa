@@ -70,11 +70,16 @@ type HighAvailabilityPolicyStrategy struct {
 type HighAvailabilityPolicyRollingUpdate struct {
 	// MinSurge is used to enforce that the `maxForce` on the Deployment
 	// Resource is at least this value.
-	MinSurge intstr.IntOrString `json:"minSurge"`
+	MinSurge *intstr.IntOrString `json:"minSurge"`
 
 	// MaxSurge is used to enforce that the `maxForce` on the Deployment
 	// Resource is at most this value.
-	MaxSurge intstr.IntOrString `json:"maxSurge"`
+	MaxSurge *intstr.IntOrString `json:"maxSurge"`
+
+	// MaxUnavailable is used to make sure the maxUnavailable configuration
+	// which determines the maximum number of pods can be unavailable during a
+	// deploy does not exceed this value.
+	MaxUnavailable *intstr.IntOrString `json:"maxUnavailable"`
 }
 
 // +genclient

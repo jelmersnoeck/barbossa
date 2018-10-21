@@ -50,7 +50,7 @@ func validateUpdateStrategy(el field.ErrorList, dpl v1beta1.Deployment, hap v1al
 	hapStrategy := hap.Spec.Strategy
 
 	if dplStrategy.Type != hapStrategy.Type {
-		return append(el, field.Invalid(path.Child("type"), dplStrategy.Type, fmt.Sprintf("should be '%s'", hapStrategy.Type)))
+		return append(el, field.Invalid(path.Child("type"), string(dplStrategy.Type), fmt.Sprintf("should be '%s'", hapStrategy.Type)))
 	}
 
 	if dplStrategy.Type == v1beta1.RollingUpdateDeploymentStrategyType {
@@ -66,24 +66,37 @@ func validateUpdateStrategy(el field.ErrorList, dpl v1beta1.Deployment, hap v1al
 		}
 
 		reps := int(*dpl.Spec.Replicas)
-		dplVal, err := intstr.GetValueFromIntOrPercent(dplStrategy.RollingUpdate.MaxSurge, reps, true)
-		if err != nil {
-			return append(el, field.Invalid(upPath.Child("maxSurge"), dplStrategy.RollingUpdate.MaxSurge.String(), err.Error()))
-		}
 
-		hapMinVal, err := intstr.GetValueFromIntOrPercent(&hapStrategy.RollingUpdate.MinSurge, reps, true)
+		el = validateMaxSurge(el, upPath, reps, dplStrategy, hapStrategy)
+		el = validateMaxUnavailable(el, upPath, reps, dplStrategy, hapStrategy)
+	}
+
+	return el
+}
+
+// validate the maxSurge value. It needs to be hap.minSurge <= dpl.maxSurge <= hap.maxSurge
+func validateMaxSurge(el field.ErrorList, upPath *field.Path, reps int, dplStrategy v1beta1.DeploymentStrategy, hapStrategy *v1alpha1.HighAvailabilityPolicyStrategy) field.ErrorList {
+	dplVal, err := intstr.GetValueFromIntOrPercent(dplStrategy.RollingUpdate.MaxSurge, reps, true)
+	if err != nil {
+		return append(el, field.Invalid(upPath.Child("maxSurge"), dplStrategy.RollingUpdate.MaxSurge.String(), err.Error()))
+	}
+
+	if hapStrategy.RollingUpdate.MinSurge != nil {
+		hapMinVal, err := intstr.GetValueFromIntOrPercent(hapStrategy.RollingUpdate.MinSurge, reps, true)
 		if err != nil {
 			return append(el, field.Invalid(upPath.Child("minSurge"), hapStrategy.RollingUpdate.MinSurge.String(), err.Error()))
 		}
 
-		hapMaxVal, err := intstr.GetValueFromIntOrPercent(&hapStrategy.RollingUpdate.MaxSurge, reps, true)
+		if dplVal < hapMinVal {
+			val := hapStrategy.RollingUpdate.MinSurge
+			return append(el, field.Invalid(upPath.Child("maxSurge"), dplStrategy.RollingUpdate.MaxSurge.String(), fmt.Sprintf("should be at least %s", val.String())))
+		}
+	}
+
+	if hapStrategy.RollingUpdate.MaxSurge != nil {
+		hapMaxVal, err := intstr.GetValueFromIntOrPercent(hapStrategy.RollingUpdate.MaxSurge, reps, true)
 		if err != nil {
 			return append(el, field.Invalid(upPath.Child("maxSurge"), hapStrategy.RollingUpdate.MaxSurge.String(), err.Error()))
-		}
-
-		if dplVal < hapMinVal {
-			val := &hapStrategy.RollingUpdate.MinSurge
-			return append(el, field.Invalid(upPath.Child("maxSurge"), dplStrategy.RollingUpdate.MaxSurge.String(), fmt.Sprintf("should be at least %s", val.String())))
 		}
 
 		if dplVal > hapMaxVal {
@@ -91,6 +104,28 @@ func validateUpdateStrategy(el field.ErrorList, dpl v1beta1.Deployment, hap v1al
 		}
 	}
 
+	return el
+}
+
+// time to validate the maxUnavailable. It needs to be dpl.maxUnavailable <= hap.maxUnavailable
+func validateMaxUnavailable(el field.ErrorList, upPath *field.Path, reps int, dplStrategy v1beta1.DeploymentStrategy, hapStrategy *v1alpha1.HighAvailabilityPolicyStrategy) field.ErrorList {
+	if hapStrategy.RollingUpdate.MaxUnavailable == nil {
+		return el
+	}
+
+	dplVal, err := intstr.GetValueFromIntOrPercent(dplStrategy.RollingUpdate.MaxUnavailable, reps, true)
+	if err != nil {
+		return append(el, field.Invalid(upPath.Child("maxUnavailable"), dplStrategy.RollingUpdate.MaxUnavailable.String(), err.Error()))
+	}
+
+	hapVal, err := intstr.GetValueFromIntOrPercent(hapStrategy.RollingUpdate.MaxUnavailable, reps, true)
+	if err != nil {
+		return append(el, field.Invalid(upPath.Child("maxUnavailable"), hapStrategy.RollingUpdate.MaxUnavailable.String(), err.Error()))
+	}
+
+	if dplVal > hapVal {
+		return append(el, field.Invalid(upPath.Child("maxUnavailable"), dplStrategy.RollingUpdate.MaxUnavailable.String(), fmt.Sprintf("should be at most %s", hapStrategy.RollingUpdate.MaxUnavailable.String())))
+	}
 	return el
 }
 

@@ -56,8 +56,9 @@ func TestDeploymentValidation(t *testing.T) {
 				Strategy: &v1alpha1.HighAvailabilityPolicyStrategy{
 					Type: v1beta1.RollingUpdateDeploymentStrategyType,
 					RollingUpdate: &v1alpha1.HighAvailabilityPolicyRollingUpdate{
-						MinSurge: intstr.FromString("25%"),
-						MaxSurge: intstr.FromString("75%"),
+						MinSurge:       fromIntStr("25%"),
+						MaxSurge:       fromIntStr("75%"),
+						MaxUnavailable: fromIntStr("0"),
 					},
 				},
 			},
@@ -66,12 +67,22 @@ func TestDeploymentValidation(t *testing.T) {
 		tcs := map[string]testCase{
 			"with a valid spec": {
 				dpl: v1beta1.DeploymentSpec{
+					Replicas: ptrInt32(3),
 					Strategy: v1beta1.DeploymentStrategy{
 						Type: v1beta1.RollingUpdateDeploymentStrategyType,
 						RollingUpdate: &v1beta1.RollingUpdateDeployment{
-							MaxSurge: fromIntStr("50%"),
+							MaxSurge:       fromIntStr("50%"),
+							MaxUnavailable: fromIntStr("0"),
 						},
 					},
+				},
+			},
+			"without a strategy defined": {
+				dpl: v1beta1.DeploymentSpec{
+					Replicas: ptrInt32(3),
+				},
+				errs: []*field.Error{
+					field.Invalid(field.NewPath("spec").Child("strategy").Child("type"), "", fmt.Sprintf("should be '%s'", v1beta1.RollingUpdateDeploymentStrategyType)),
 				},
 			},
 			"without a rolling update configuration": {
@@ -91,7 +102,8 @@ func TestDeploymentValidation(t *testing.T) {
 					Strategy: v1beta1.DeploymentStrategy{
 						Type: v1beta1.RollingUpdateDeploymentStrategyType,
 						RollingUpdate: &v1beta1.RollingUpdateDeployment{
-							MaxSurge: fromIntStr("5%"),
+							MaxSurge:       fromIntStr("5%"),
+							MaxUnavailable: fromIntStr("0"),
 						},
 					},
 				},
@@ -105,7 +117,8 @@ func TestDeploymentValidation(t *testing.T) {
 					Strategy: v1beta1.DeploymentStrategy{
 						Type: v1beta1.RollingUpdateDeploymentStrategyType,
 						RollingUpdate: &v1beta1.RollingUpdateDeployment{
-							MaxSurge: fromIntStr("95%"),
+							MaxSurge:       fromIntStr("95%"),
+							MaxUnavailable: fromIntStr("0"),
 						},
 					},
 				},
@@ -121,7 +134,22 @@ func TestDeploymentValidation(t *testing.T) {
 					},
 				},
 				errs: []*field.Error{
-					field.Invalid(field.NewPath("spec").Child("strategy").Child("type"), v1beta1.RecreateDeploymentStrategyType, "should be 'RollingUpdate'"),
+					field.Invalid(field.NewPath("spec").Child("strategy").Child("type"), string(v1beta1.RecreateDeploymentStrategyType), "should be 'RollingUpdate'"),
+				},
+			},
+			"with a maxUnavailable set too high": {
+				dpl: v1beta1.DeploymentSpec{
+					Replicas: ptrInt32(3),
+					Strategy: v1beta1.DeploymentStrategy{
+						Type: v1beta1.RollingUpdateDeploymentStrategyType,
+						RollingUpdate: &v1beta1.RollingUpdateDeployment{
+							MaxSurge:       fromIntStr("50%"),
+							MaxUnavailable: fromIntStr("1"),
+						},
+					},
+				},
+				errs: []*field.Error{
+					field.Invalid(field.NewPath("spec").Child("strategy").Child("rollingUpdate").Child("maxUnavailable"), "1", "should be at most 0"),
 				},
 			},
 		}
