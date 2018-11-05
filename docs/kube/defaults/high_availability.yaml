@@ -1,24 +1,40 @@
 # This is a default HighAvailabilityPolicy which ensures applications run in a
 # High Availability fashion where:
-# - there are 2 replicas
-# - during a deploy we roll out new replicas before destroying old ones
 apiVersion: barbossa.sphc.io/v1alpha1
 kind: HighAvailabilityPolicy
 metadata:
   name: default
   namespace: default
 spec:
+  # Select the deployments we want to target to ensure High Availability. This
+  # default selector selects all deployments in the selected namespace.
   selector:
     matchLabels: {}
+  # The number of replicas the Deployment should have configured at a minimum.
   replicas:
     minimum: 2
+  # The UpdateStrategy which should be applied to the selected deployments.
+  # By default, we'll surge at least 1 pod, and a maxumum of n (replicas) pods.
+  # We also don't allow any unavailable pods during deployment to ensure we do
+  # a gradual rollout.
   strategy:
     type: RollingUpdate
     rollingUpdate:
       minSurge: 25%
       maxSurge: 100%
       maxUnavailable: 0
+  # Disruptions enforces the presence of a PodDisruptionBudget which targets the
+  # selected deployment. The unique field enforces that a budget is only
+  # targetting a single Deployment. If a new PDB is added which selects multiple
+  # Deployments, it will be invalid. If a new Deployment is added which colides
+  # with another PDB selection, it will be invalid.
+  disruptions:
+    budgetted: true
+    unique: true
   resources:
-    requests:
-      cpu: true
-      memory: true
+    requiredRequests:
+    - cpu
+    - memory
+    minRequests:
+      cpu: 100m
+      memory: 256M
